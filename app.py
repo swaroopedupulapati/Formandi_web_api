@@ -671,6 +671,13 @@ def buyer_notifications():
 
     return render_template("buyer_notifications.html", notifications=notifications)
 
+
+
+
+
+
+
+
 # app.py
 from flask import Flask, request, jsonify
 from flask_jwt_extended import (

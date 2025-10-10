@@ -1,48 +1,185 @@
-{# farmer_add.html #}
 {% extends 'farmer_base.html' %}
 {% block title %}Add Produce{% endblock %}
 {% block content %}
 <h2>Add New Produce</h2>
 <form method="POST" enctype="multipart/form-data">
-  <label>Name:</label><br>
-  <input type="text" name="name" required><br><br>
 
-  <label>Category:</label><br>
-  <select name="category" required>
-    <option>Vegetable</option>
-    <option>Fruit</option>
-    <option>Grain</option>
-    <option>Pulses</option>
-    <option>Other</option>
-  </select><br><br>
+  <!-- Step 1: Categories -->
+  <div id="stepCategory">
+    <h3>Step 1: Select Category</h3>
+    <div id="categoryButtons"></div>
+    <input type="hidden" name="category" id="selectedCategory" required>
+  </div>
 
-  <label>Price (per kg):</label><br>
-  <input type="number" step="0.01" name="price" required><br><br>
+  <!-- Step 2: Items -->
+  <div id="stepItem" style="display:none;">
+    <h3>Step 2: Select Item</h3>
+    <div id="itemButtons"></div>
+    <input type="hidden" name="name" id="selectedItem" required>
+    <br>
+    <button type="button" onclick="goBackToCategory()">⬅ Back to Categories</button>
+  </div>
 
-  <label>Quantity (kg):</label><br>
-  <input type="number" step="0.01" name="quantity" required><br><br>
+  <!-- Step 3: Details -->
+  <div id="stepDetails" style="display:none;">
+    <h3>Step 3: Enter Details</h3>
+    <label>Price (per kg):</label><br>
+    <input type="number" step="0.01" name="price" required><br><br>
 
-  <label>Upload Produce Image:</label><br>
-  <input type="file" name="image" accept="image/*" onchange="previewImage(event)"><br><br>
-  <img id="imagePreview" src="#" alt="Image Preview" style="display:none; max-width: 200px; border: 1px solid #ccc; padding: 5px;"><br><br>
+    <label>Quantity (kg):</label><br>
+    <input type="number" step="0.01" name="quantity" required><br><br>
 
-  <button type="submit">Add Produce</button>
+    <label>Upload Produce Image:</label><br>
+    <input type="file" name="image" accept="image/*" onchange="previewImage(event)"><br><br>
+    <img id="imagePreview" src="#" alt="Image Preview" style="display:none; max-width:200px; border:1px solid #ccc; padding:5px;"><br><br>
+
+    <button type="button" onclick="goBackToItems()">⬅ Back to Items</button>
+    <button type="submit">Add Produce</button>
+  </div>
+
 </form>
 
 <script>
+  const categories = [
+    { emoji: "🥦", name: "Vegetable" },
+    { emoji: "🍎", name: "Fruit" },
+    { emoji: "🌾", name: "Grain" },
+    { emoji: "🫘", name: "Pulses" },
+    { emoji: "🍯", name: "Other" }
+  ];
+
+  const categoryItems = {
+    "Vegetable": [
+      { emoji: "🥔", name: "Potato" },
+      { emoji: "🍅", name: "Tomato" },
+      { emoji: "🥕", name: "Carrot" },
+      { emoji: "🧅", name: "Onion" },
+      { emoji: "🥬", name: "Spinach" }
+    ],
+    "Fruit": [
+      { emoji: "🍎", name: "Apple" },
+      { emoji: "🍌", name: "Banana" },
+      { emoji: "🥭", name: "Mango" },
+      { emoji: "🍊", name: "Orange" },
+      { emoji: "🍇", name: "Grapes" }
+    ],
+    "Grain": [
+      { emoji: "🌾", name: "Rice" },
+      { emoji: "🌾", name: "Wheat" },
+      { emoji: "🌾", name: "Barley" },
+      { emoji: "🌽", name: "Corn" }
+    ],
+    "Pulses": [
+      { emoji: "🫘", name: "Lentil" },
+      { emoji: "🫘", name: "Chickpea" },
+      { emoji: "🫘", name: "Green Gram" },
+      { emoji: "🫘", name: "Black Gram" }
+    ],
+    "Other": [
+      { emoji: "🍯", name: "Honey" },
+      { emoji: "🍬", name: "Jaggery" },
+      { emoji: "🥜", name: "Dry Fruits" }
+    ]
+  };
+
+  function styleButton(btn) {
+    btn.style.margin = "5px";
+    btn.style.padding = "10px 15px";
+    btn.style.border = "1px solid #ccc";
+    btn.style.borderRadius = "8px";
+    btn.style.background = "#f8f8f8";
+    btn.style.cursor = "pointer";
+    btn.style.fontSize = "16px";
+  }
+
+  function showStep(step) {
+    document.getElementById("stepCategory").style.display = step === 1 ? "block" : "none";
+    document.getElementById("stepItem").style.display = step === 2 ? "block" : "none";
+    document.getElementById("stepDetails").style.display = step === 3 ? "block" : "none";
+  }
+
+  function loadCategoryButtons() {
+    const container = document.getElementById("categoryButtons");
+    const hiddenInput = document.getElementById("selectedCategory");
+    container.innerHTML = "";
+    
+    categories.forEach(cat => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = `${cat.emoji} ${cat.name}`;
+      styleButton(btn);
+      btn.onclick = function() {
+        hiddenInput.value = cat.name;
+        loadItemButtons(cat.name);
+        history.pushState({ step: 2, category: cat.name }, "", "#items");
+        showStep(2);
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  function loadItemButtons(categoryName) {
+    const container = document.getElementById("itemButtons");
+    const hiddenInput = document.getElementById("selectedItem");
+    container.innerHTML = "";
+
+    categoryItems[categoryName].forEach(item => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.innerHTML = `${item.emoji} ${item.name}`;
+      styleButton(btn);
+      btn.onclick = function() {
+        hiddenInput.value = item.name;
+        history.pushState({ step: 3, category: categoryName, item: item.name }, "", "#details");
+        showStep(3);
+      };
+      container.appendChild(btn);
+    });
+  }
+
+  // Manual Back Button Actions
+  function goBackToCategory() {
+    history.back(); // will trigger popstate event to go to step 1
+  }
+
+  function goBackToItems() {
+    history.back(); // will trigger popstate event to go to step 2
+  }
+
+  // Image preview
   function previewImage(event) {
     const image = event.target.files[0];
     const reader = new FileReader();
-
     reader.onload = function(e) {
       const preview = document.getElementById('imagePreview');
       preview.src = e.target.result;
       preview.style.display = 'block';
     };
-
-    if (image) {
-      reader.readAsDataURL(image);
-    }
+    if (image) reader.readAsDataURL(image);
   }
+
+  // Handle browser back/forward navigation
+  window.onpopstate = function(event) {
+    if (!event.state) {
+      showStep(1);
+    } else {
+      showStep(event.state.step);
+      if (event.state.step === 2 && event.state.category) {
+        loadItemButtons(event.state.category);
+        document.getElementById("selectedCategory").value = event.state.category;
+      }
+      if (event.state.step === 3 && event.state.category && event.state.item) {
+        loadItemButtons(event.state.category);
+        document.getElementById("selectedCategory").value = event.state.category;
+        document.getElementById("selectedItem").value = event.state.item;
+      }
+    }
+  };
+
+  // Initialize
+  window.onload = function() {
+    loadCategoryButtons();
+    history.replaceState({ step: 1 }, "", "#categories");
+  };
 </script>
 {% endblock %}
