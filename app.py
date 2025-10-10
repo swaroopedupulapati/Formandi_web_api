@@ -1,81 +1,28 @@
-# app.py
-from flask import Flask, request, jsonify,render_template,redirect,url_for, session, flash
-from pymongo import MongoClient
-from flask_jwt_extended import (
-    JWTManager, create_access_token,
-    jwt_required, get_jwt_identity
-)
-from flask_cors import CORS
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
-from bson.binary import Binary
-from datetime import datetime, timedelta
-import base64
-import os
+from datetime import datetime
 
-# ---------- Configuration ----------
+
+
+
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+app.secret_key = 'your_secret_key'
+# app.config.update(
+#     SESSION_COOKIE_SAMESITE="None",   # allow cookies across origins (Cordova WebView)
+#     SESSION_COOKIE_SECURE=False       # False for HTTP (local/dev), True for HTTPS (prod)
+# )
 
-
-jwt = JWTManager(app)
-
-# MongoDB connection (use your URI)
-MONGO_URI = os.environ.get(
-    "MONGO_URI",
-    "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
-)
-client = MongoClient(MONGO_URI)
+# MongoDB Setup
+# client = MongoClient("mongodb://localhost:27017/")
+mydb = "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
+client = MongoClient(mydb)
 db = client["market_db"]
+users_collection = db["users"]
+produce_collection = db["produce"]
+orders_collection = db["orders"]
 
-# Collections
-users_coll = db["users"]
-produce_coll = db["produce"]
-orders_coll = db["orders"]
-
-
-# ---------- Helpers ----------
-def obj_id(o):
-    return str(o) if not isinstance(o, ObjectId) else str(o)
-
-def serialize_produce(item):
-    """Convert produce document to JSON-serializable dict."""
-    out = {
-        "id": str(item["_id"]),
-        "farmer_id": str(item["farmer_id"]),
-        "name": item.get("name"),
-        "category": item.get("category"),
-        "price": item.get("price"),
-        "quantity": item.get("quantity"),
-        "listed_on": item.get("listed_on").isoformat() if isinstance(item.get("listed_on"), datetime) else item.get("listed_on"),
-        "status": item.get("status"),
-    }
-    if item.get("image_data") and item.get("image_type"):
-        try:
-            b64 = base64.b64encode(item["image_data"]).decode("utf-8")
-            out["photo"] = f"data:{item['image_type']};base64,{b64}"
-        except Exception:
-            out["photo"] = ""
-    else:
-        out["photo"] = ""
-    return out
-
-def serialize_order(order_doc):
-    out = {
-        "_id": str(order_doc.get("_id")),
-        "produce_id": str(order_doc.get("produce_id")),
-        "farmer_id": str(order_doc.get("farmer_id")),
-        "buyer_id": str(order_doc.get("buyer_id")),
-        "quantity": order_doc.get("quantity"),
-        "offer_price": order_doc.get("offer_price"),
-        "status": order_doc.get("status"),
-        "created_at": order_doc.get("created_at").isoformat() if isinstance(order_doc.get("created_at"), datetime) else order_doc.get("created_at")
-    }
-    return out
-
-
-# ----------Web Routes ----------
 
 
 @app.route('/')
@@ -93,12 +40,12 @@ def register():
     district = request.form['district']
     state = request.form['state']
 
-    if users_coll.find_one({'email': email}):
+    if users_collection.find_one({'email': email}):
         flash("Email or Phone already registered. Please login.", "error")
         return redirect(url_for('home'))
 
     hashed_pw = generate_password_hash(password)
-    users_coll.insert_one({
+    users_collection.insert_one({
         'name': name,
         'email': email,
         'password': hashed_pw,
@@ -118,7 +65,7 @@ def login():
     password = request.form['password']
     user_type = request.form['user_type']
 
-    user = users_coll.find_one({
+    user = users_collection.find_one({
         'email': email,
         'user_type': user_type
     })
@@ -177,10 +124,15 @@ def farmer_dashboard():
     )
 
 
+
+import base64
+
 @app.template_filter('b64encode')
 def b64encode_filter(data):
     return base64.b64encode(data).decode('utf-8')
 
+from bson.binary import Binary
+from datetime import datetime
 
 @app.route('/farmer/add', methods=['GET', 'POST'])
 def farmer_add():
@@ -226,7 +178,7 @@ def farmer_my_produce():
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    produce = list(produce_coll.find({"farmer_id": ObjectId(session['user_id'])}))
+    produce = list(produce_collection.find({"farmer_id": ObjectId(session['user_id'])}))
     return render_template('farmer_my_produce.html', produce=produce)
 
 
@@ -277,10 +229,38 @@ def farmer_delete_produce(produce_id):
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    produce_coll.delete_one({"_id": ObjectId(produce_id), "farmer_id": ObjectId(session['user_id'])})
+    produce_collection.delete_one({"_id": ObjectId(produce_id), "farmer_id": ObjectId(session['user_id'])})
     flash("Produce deleted.", "success")
     return redirect(url_for('farmer_my_produce'))
 
+
+from bson.objectid import ObjectId
+from datetime import datetime
+'''
+@app.route('/farmer/orders')
+def farmer_orders():
+    if 'user_id' not in session or session['user_type'] != 'farmer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    orders = db.orders.find({'farmer_id': ObjectId(session['user_id'])})
+    result = []
+
+    for order in orders:
+        buyer = db.users.find_one({'_id': order['buyer_id']})
+        produce = db.produce.find_one({'_id': order['produce_id']})
+        result.append({
+            '_id': str(order['_id']),
+            'buyer_name': buyer['name'] if buyer else 'Unknown',
+            'produce_name': produce['name'] if produce else 'Unknown',
+            'quantity': order['quantity'],
+            'offer_price': order['offer_price'],
+            'status': order['status'],
+            'created_at': order['created_at'].strftime('%Y-%m-%d')
+        })
+
+    return render_template('farmer_orders.html', orders=result)
+'''
 
 
 
@@ -384,7 +364,40 @@ def farmer_reject_order(order_id):
     db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': 'Rejected'}})
     flash("Order rejected.", "info")
     return redirect(url_for('farmer_orders'))
+'''
+@app.route('/farmer/order/<order_id>/<action>')
+def farmer_update_order(order_id, action):
+    if 'user_id' not in session or session['user_type'] != 'farmer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
 
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        flash("Order not found.", "error")
+        return redirect(url_for('farmer_orders'))
+
+    if action.lower() in ['accept', 'reject']:
+        new_status = 'Accepted' if action.lower() == 'accept' else 'Rejected'
+        db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+        
+        # 🔔 Send buyer notification
+        produce = db.produce.find_one({'_id': order['produce_id']})
+        db.notifications.insert_one({
+            "user_id": order['buyer_id'],
+            "message": f"Your order for {produce['name']} was {new_status.lower()}.",
+            "created_at": datetime.now(),
+            "is_read": False
+        })
+
+        flash(f"Order {new_status.lower()} successfully.", "success")
+    else:
+        flash("Invalid action.", "error")
+
+    return redirect(url_for('farmer_orders'))
+
+
+notifications_collection = db['notifications']
+'''
 @app.route('/farmer/notifications')
 def farmer_notifications():
     if 'user_id' not in session or session['user_type'] != 'farmer':
@@ -410,7 +423,12 @@ def farmer_notifications():
 
 
 
+
+
 #-------------buyer routes----------------
+
+from bson.objectid import ObjectId
+from flask import render_template, session, redirect, url_for, flash
 
 @app.route('/buyer/dashboard')
 def buyer_dashboard():
@@ -432,6 +450,7 @@ def buyer_dashboard():
         rejected_orders=rejected_orders
     )
 
+import base64
 
 @app.route('/buyer/produce')
 def buyer_produce():
@@ -468,6 +487,71 @@ def buyer_produce():
         })
 
     return render_template('buyer_produce.html', listings=listings)
+
+from datetime import datetime
+import base64
+'''
+@app.route('/buyer/produce/<produce_id>')
+def buyer_view_produce(produce_id):
+    if 'user_id' not in session or session['user_type'] != 'buyer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    if not produce:
+        flash("Produce not found or unavailable.", "error")
+        return redirect(url_for('buyer_produce'))
+
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+    produce_data = {
+        'id': produce_id,
+        'name': produce['name'],
+        'category': produce['category'],
+        'price': produce['price'],
+        'quantity': produce['quantity'],
+        'photo': produce.get('photo_base64', ''),
+        'farmer_name': farmer['name'] if farmer else 'Unknown'
+    }
+
+    return render_template('buyer_view_produce.html', produce=produce_data)
+
+
+@app.route('/buyer/produce/<produce_id>', methods=['POST'])
+def buyer_place_order(produce_id):
+    if 'user_id' not in session or session['user_type'] != 'buyer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    produce = db.produce.find_one({'_id': ObjectId(produce_id)})
+    if not produce or produce['status'] != 'Available':
+        flash("Invalid or unavailable produce.", "error")
+        return redirect(url_for('buyer_produce'))
+
+    try:
+        quantity = int(request.form['quantity'])
+        offer_price = float(request.form['offer_price'])
+    except ValueError:
+        flash("Invalid quantity or price input.", "error")
+        return redirect(url_for('buyer_view_produce', produce_id=produce_id))
+
+    if quantity <= 0 or quantity > produce['quantity']:
+        flash("Invalid quantity.", "error")
+        return redirect(url_for('buyer_view_produce', produce_id=produce_id))
+
+    order = {
+        'produce_id': produce['_id'],
+        'farmer_id': produce['farmer_id'],
+        'buyer_id': ObjectId(session['user_id']),
+        'quantity': quantity,
+        'offer_price': offer_price,
+        'status': 'Pending',
+        'created_at': datetime.now()
+    }
+
+    db.orders.insert_one(order)
+    flash("Order placed successfully.", "success")
+    return redirect(url_for('buyer_orders'))
+'''
 
 
 @app.route('/buyer/produce/<produce_id>', methods=['GET', 'POST'])
@@ -536,6 +620,8 @@ def buyer_view_produce(produce_id):
     return render_template('buyer_view_produce.html', produce=produce_data)
 
 
+
+
 @app.route('/buyer/orders')
 def buyer_orders():
     if 'user_id' not in session or session['user_type'] != 'buyer':
@@ -571,6 +657,7 @@ def buyer_orders():
 
     return render_template("buyer_orders.html", orders=orders)
 
+
 @app.route('/buyer/notifications')
 def buyer_notifications():
     if 'user_id' not in session or session['user_type'] != 'buyer':
@@ -584,15 +671,128 @@ def buyer_notifications():
 
     return render_template("buyer_notifications.html", notifications=notifications)
 
+# app.py
+from flask import Flask, request, jsonify
+from flask_jwt_extended import (
+    JWTManager, create_access_token,
+    jwt_required, get_jwt_identity
+)
+from flask_cors import CORS
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+from werkzeug.security import generate_password_hash, check_password_hash
+from bson.binary import Binary
+from datetime import datetime, timedelta
+import base64
+import os
 
+# ---------- Configuration ----------
+# app = Flask(__name__)
+CORS(app, supports_credentials=True)
 
+# Secret keys (change in production; use env vars)
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-key")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
 
+jwt = JWTManager(app)
 
+# MongoDB connection (use your URI)
+MONGO_URI = os.environ.get(
+    "MONGO_URI",
+    "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
+)
+client = MongoClient(MONGO_URI)
+db = client["market_db"]
 
+# Collections
+users_coll = db["users"]
+produce_coll = db["produce"]
+orders_coll = db["orders"]
 
+# ---------- Helpers ----------
+def obj_id(o):
+    return str(o) if not isinstance(o, ObjectId) else str(o)
 
-#---------- API Endpoints ----------
+def serialize_produce(item):
+    """Convert produce document to JSON-serializable dict."""
+    out = {
+        "id": str(item["_id"]),
+        "farmer_id": str(item["farmer_id"]),
+        "name": item.get("name"),
+        "category": item.get("category"),
+        "price": item.get("price"),
+        "quantity": item.get("quantity"),
+        "listed_on": item.get("listed_on").isoformat() if isinstance(item.get("listed_on"), datetime) else item.get("listed_on"),
+        "status": item.get("status"),
+    }
+    if item.get("image_data") and item.get("image_type"):
+        try:
+            b64 = base64.b64encode(item["image_data"]).decode("utf-8")
+            out["photo"] = f"data:{item['image_type']};base64,{b64}"
+        except Exception:
+            out["photo"] = ""
+    else:
+        out["photo"] = ""
+    return out
 
+def serialize_order(order_doc):
+    out = {
+        "_id": str(order_doc.get("_id")),
+        "produce_id": str(order_doc.get("produce_id")),
+        "farmer_id": str(order_doc.get("farmer_id")),
+        "buyer_id": str(order_doc.get("buyer_id")),
+        "quantity": order_doc.get("quantity"),
+        "offer_price": order_doc.get("offer_price"),
+        "status": order_doc.get("status"),
+        "created_at": order_doc.get("created_at").isoformat() if isinstance(order_doc.get("created_at"), datetime) else order_doc.get("created_at")
+    }
+    return out
+
+# ---------- Auth ----------
+@app.route("/api/register", methods=["POST"])
+def api_register():
+    data = request.get_json(force=True)
+    required = ["name", "email", "password", "user_type", "pincode", "village", "district", "state"]
+    if not all(k in data for k in required):
+        return jsonify({"error": "Missing fields"}), 400
+
+    email = data["email"].strip().lower()
+    if users_coll.find_one({"email": email}):
+        return jsonify({"error": "Email already registered"}), 400
+
+    hashed = generate_password_hash(data["password"])
+    user_doc = {
+        "name": data["name"],
+        "email": email,
+        "password": hashed,
+        "user_type": data["user_type"],
+        "pincode": data["pincode"],
+        "village": data["village"],
+        "district": data["district"],
+        "state": data["state"],
+        "created_at": datetime.utcnow()
+    }
+    res = users_coll.insert_one(user_doc)
+    return jsonify({"message": "Registration successful", "user_id": str(res.inserted_id)}), 201
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json(force=True)
+    if not data.get("email") or not data.get("password") or not data.get("user_type"):
+        return jsonify({"error": "Missing credentials"}), 400
+
+    email = data["email"].strip().lower()
+    user = users_coll.find_one({"email": email, "user_type": data["user_type"]})
+    if not user or not check_password_hash(user["password"], data["password"]):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    access_token = create_access_token(identity=str(user["_id"]))
+    return jsonify({
+        "access_token": access_token,
+        "user_id": str(user["_id"]),
+        "name": user["name"],
+        "user_type": user["user_type"]
+    }), 200
 
 # ---------- Farmer endpoints ----------
 @app.route("/api/farmer/dashboard", methods=["GET"])
@@ -1028,6 +1228,11 @@ def api_buyer_notifications():
 @app.route("/api/ping", methods=["GET"])
 def ping():
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
+
+# ---------- Run ----------
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
 
 
 
