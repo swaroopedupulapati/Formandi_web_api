@@ -676,10 +676,8 @@ def buyer_notifications():
 
 
 
-
-
 # app.py
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,session
 from flask_jwt_extended import (
     JWTManager, create_access_token,
     jwt_required, get_jwt_identity
@@ -694,7 +692,7 @@ import base64
 import os
 
 # ---------- Configuration ----------
-# app = Flask(__name__)
+app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
 # Secret keys (change in production; use env vars)
@@ -715,6 +713,41 @@ db = client["market_db"]
 users_coll = db["users"]
 produce_coll = db["produce"]
 orders_coll = db["orders"]
+
+# New endpoint to fetch user profile details
+@app.route("/api/profile", methods=["GET"])
+@jwt_required()
+def get_profile():
+    user_id = get_jwt_identity()
+    user = users_coll.find_one({"_id": ObjectId(user_id)}, {"password": 0}) # Exclude password
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+        
+    # Serialize the user data for JSON response
+    profile_data = {
+        "id": str(user["_id"]),
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "user_type": user.get("user_type"),
+        "pincode": user.get("pincode"),
+        "village": user.get("village"),
+        "district": user.get("district"),
+        "state": user.get("state"),
+        "created_at": user.get("created_at").isoformat()
+    }
+    
+    return jsonify(profile_data), 200
+
+
+@app.route("/api/notifications/mark_read", methods=["PUT"])
+@jwt_required()
+def mark_notifications_read():
+    user_id = get_jwt_identity()
+    db.notifications.update_many({"user_id": ObjectId(user_id), "is_read": False}, {"$set": {"is_read": True}})
+    return jsonify({"message": "All notifications marked as read"}), 200
+
+
 
 # ---------- Helpers ----------
 def obj_id(o):
@@ -757,7 +790,7 @@ def serialize_order(order_doc):
 
 # ---------- Auth ----------
 @app.route("/api/register", methods=["POST"])
-def api_register():
+def register():
     data = request.get_json(force=True)
     required = ["name", "email", "password", "user_type", "pincode", "village", "district", "state"]
     if not all(k in data for k in required):
@@ -783,7 +816,7 @@ def api_register():
     return jsonify({"message": "Registration successful", "user_id": str(res.inserted_id)}), 201
 
 @app.route("/api/login", methods=["POST"])
-def api_login():
+def login():
     data = request.get_json(force=True)
     if not data.get("email") or not data.get("password") or not data.get("user_type"):
         return jsonify({"error": "Missing credentials"}), 400
@@ -804,7 +837,7 @@ def api_login():
 # ---------- Farmer endpoints ----------
 @app.route("/api/farmer/dashboard", methods=["GET"])
 @jwt_required()
-def api_farmer_dashboard():
+def farmer_dashboard():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -826,7 +859,7 @@ def api_farmer_dashboard():
 
 @app.route("/api/farmer/produce", methods=["POST"])
 @jwt_required()
-def api_farmer_add_produce():
+def farmer_add_produce():
     """
     Accepts multipart/form-data:
       fields: name, category, price, quantity
@@ -874,7 +907,7 @@ def api_farmer_add_produce():
 
 @app.route("/api/farmer/produce", methods=["GET"])
 @jwt_required()
-def api_farmer_list_produce():
+def farmer_list_produce():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -886,7 +919,7 @@ def api_farmer_list_produce():
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["PUT"])
 @jwt_required()
-def api_farmer_edit_produce(produce_id):
+def farmer_edit_produce(produce_id):
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -927,7 +960,7 @@ def api_farmer_edit_produce(produce_id):
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["DELETE"])
 @jwt_required()
-def api_farmer_delete_produce(produce_id):
+def farmer_delete_produce(produce_id):
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -940,7 +973,7 @@ def api_farmer_delete_produce(produce_id):
 
 @app.route("/api/farmer/orders", methods=["GET"])
 @jwt_required()
-def api_farmer_get_orders():
+def farmer_get_orders():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -958,7 +991,7 @@ def api_farmer_get_orders():
         out.append(od)
     return jsonify(out), 200
 
-
+'''
 @app.route('/api/farmer/order/<order_id>/<action>', methods=['PUT'])
 @jwt_required()
 
@@ -1012,10 +1045,58 @@ def api_farmer_update_order(order_id, action):
         "message": f"Order marked as {new_status}.",
         "status": new_status,
         "order_id": order_id
+    }), 200'''
+
+"""
+@app.route('/api/farmer/orders/<order_id>/<action>', methods=['PUT'])
+@jwt_required()
+def api_farmer_update_order(order_id, action):
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    valid_actions = {
+        'accept': 'Accepted',
+        'reject': 'Rejected',
+        'pack': 'Packed',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered'
+    }
+
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+
+    new_status = valid_actions[action]
+    db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+
+    produce = db.produce.find_one({'_id': order['produce_id']})
+    db.notifications.insert_one({
+        "user_id": order['buyer_id'],
+        "message": f"Your order for {produce['name']} is now {new_status}.",
+        "created_at": datetime.now(),
+        "is_read": False
+    })
+
+    if new_status == "Delivered":
+        db.produce.update_one(
+            {'_id': order['produce_id']},
+            {'$inc': {'quantity': -order['quantity']}}
+        )
+
+    return jsonify({
+        "message": f"Order marked as {new_status}.",
+        "status": new_status,
+        "order_id": order_id
     }), 200
+
 @app.route("/api/farmer/orders/<order_id>/reject", methods=["PUT"])
 @jwt_required()
-def api_farmer_reject_order(order_id):
+def farmer_reject_order(order_id):
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1025,10 +1106,65 @@ def api_farmer_reject_order(order_id):
     if res.matched_count == 0:
         return jsonify({"error": "Order not found or permission denied"}), 404
     return jsonify({"message": "Order rejected"}), 200
+"""
 
-@app.route("/api/farmer/notifications", methods=["GET"])
+
+
+@app.route('/api/farmer/orders/<order_id>/<action>', methods=['PUT'])
 @jwt_required()
-def api_farmer_notifications():
+def api_farmer_update_order(order_id, action):
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    valid_actions = {
+        'accept': 'Accepted',
+        'reject': 'Rejected',
+        'pack': 'Packed',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered'
+    }
+
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+
+    new_status = valid_actions[action]
+    db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+
+    produce = db.produce.find_one({'_id': order['produce_id']})
+
+    # ✅ Notify buyer about status change
+    db.notifications.insert_one({
+        "user_id": order['buyer_id'],
+        "message": f"Your order for {produce['name']} is now {new_status}.",
+        "created_at": datetime.utcnow(),
+        "is_read": False
+    })
+
+    # ✅ If delivered, reduce stock
+    if new_status == "Delivered":
+        db.produce.update_one(
+            {'_id': order['produce_id']},
+            {'$inc': {'quantity': -order['quantity']}}
+        )
+
+    return jsonify({
+        "message": f"Order marked as {new_status}.",
+        "status": new_status,
+        "order_id": order_id
+    }), 200
+
+
+
+
+'''@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1042,14 +1178,64 @@ def api_farmer_notifications():
         prod = produce_coll.find_one({"_id": o["produce_id"]})
         msg = f"{buyer['name']} placed an order for {o['quantity']} kg of {prod['name']} - Status: {o['status']}"
         notifications.append({"message": msg, "date": o["created_at"].isoformat()})
+    return jsonify(notifications), 200'''
+    
+"""@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    farmer_id = ObjectId(user_id)
+    orders_cursor = orders_coll.find({"farmer_id": farmer_id}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        buyer = users_coll.find_one({"_id": o.get("buyer_id")})
+        prod = produce_coll.find_one({"_id": o.get("produce_id")})
+
+        # ✅ Skip if missing any linked data
+        if not buyer or not prod:
+            continue
+
+        msg = f"{buyer['name']} placed an order for {o.get('quantity', 0)} kg of {prod.get('name', 'Unknown')} - Status: {o.get('status', 'Pending')}"
+        created_at = o.get("created_at")
+        date_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
+        notifications.append({"message": msg, "date": date_str})
     return jsonify(notifications), 200
+"""
+
+
+
+
+@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # ✅ Read from notifications collection
+    notifs = db.notifications.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
+    out = []
+    for n in notifs:
+        date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
+        out.append({
+            "message": n["message"],
+            "date": date_str,
+            "is_read": n.get("is_read", False)
+        })
+    return jsonify(out), 200
+
 
 # ---------- Buyer endpoints ----------
 
 
 @app.route("/api/buyer/dashboard", methods=["GET"])
 @jwt_required()
-def api_buyer_dashboard():
+def buyer_dashboard():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1071,14 +1257,14 @@ def api_buyer_dashboard():
     
 @app.route("/api/buyer/produce", methods=["GET"])
 @jwt_required()
-def api_buyer_list_produce():
+def buyer_list_produce():
     # returns all available produce
     items = list(produce_coll.find({"status": "Available"}))
     out = [serialize_produce(it) for it in items]
     return jsonify(out), 200
 
 
-
+'''
 @app.route('/api/buyer/produce/<produce_id>', methods=['GET', 'POST'])
 @jwt_required()
 def api_buyer_view_produce(produce_id):
@@ -1148,10 +1334,76 @@ def api_buyer_view_produce(produce_id):
             "message": "Order placed successfully",
             "produce_id": str(produce['_id']),
             "status": "Pending"
+        }), 201'''
+
+@app.route('/api/buyer/produce/<produce_id>', methods=['GET', 'POST'])
+@jwt_required()
+def api_buyer_view_produce(produce_id):
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    if not produce:
+        return jsonify({"error": "Produce not found or unavailable"}), 404
+
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+
+    photo = ''
+    if produce.get('image_data'):
+        photo = f"data:{produce['image_type']};base64," + base64.b64encode(produce['image_data']).decode('utf-8')
+
+    produce_data = {
+        'id': str(produce['_id']),
+        'name': produce['name'],
+        'category': produce['category'],
+        'price': produce['price'],
+        'quantity': produce['quantity'],
+        'photo': photo,
+        'farmer_name': farmer['name'] if farmer else "Unknown"
+    }
+
+    # ✅ GET: return details
+    if request.method == 'GET':
+        return jsonify({"produce": produce_data}), 200
+
+    # ✅ POST: place order
+    if request.method == 'POST':
+        data = request.get_json()
+        user_id = get_jwt_identity()  # ✅ Correctly get buyer ID from token
+
+        try:
+            quantity = int(data.get('quantity', 0))
+            offer_price = float(data.get('offer_price', 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid input for quantity or price"}), 400
+
+        if quantity <= 0 or quantity > produce['quantity']:
+            return jsonify({"error": "Invalid quantity selected"}), 400
+
+        buyer_details = {
+            'name': data.get('buyer_name', ''),
+            'phone': data.get('buyer_phone', ''),
+            'address': data.get('buyer_address', '')
+        }
+
+        db.orders.insert_one({
+            'produce_id': produce['_id'],
+            'farmer_id': produce['farmer_id'],
+            'buyer_id': ObjectId(user_id),  # ✅ Fixed line
+            'quantity': quantity,
+            'offer_price': offer_price,
+            'status': 'Pending',
+            'created_at': datetime.now(),
+            'buyer_details': buyer_details
+        })
+
+        return jsonify({
+            "message": "Order placed successfully",
+            "produce_id": str(produce['_id']),
+            "status": "Pending"
         }), 201
+
+'''
 @app.route("/api/buyer/orders", methods=["POST"])
 @jwt_required()
-def api_buyer_place_order():
+def buyer_place_order():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1186,10 +1438,60 @@ def api_buyer_place_order():
     }
     res = orders_coll.insert_one(order)
     return jsonify({"message": "Order placed", "order_id": str(res.inserted_id)}), 201
+'''
+
+@app.route("/api/buyer/orders", methods=["POST"])
+@jwt_required()
+def buyer_place_order():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    required = ["produce_id", "quantity", "offer_price"]
+    if not all(k in data for k in required):
+        return jsonify({"error": "Missing fields"}), 400
+
+    prod = produce_coll.find_one({"_id": ObjectId(data["produce_id"]), "status": "Available"})
+    if not prod:
+        return jsonify({"error": "Invalid produce"}), 400
+
+    try:
+        qty = int(data["quantity"])
+        offer = float(data["offer_price"])
+    except ValueError:
+        return jsonify({"error": "Invalid numeric values"}), 400
+
+    if qty <= 0 or qty > prod["quantity"]:
+        return jsonify({"error": "Invalid quantity"}), 400
+
+    # ✅ Insert new order
+    order = {
+        "produce_id": prod["_id"],
+        "farmer_id": prod["farmer_id"],
+        "buyer_id": ObjectId(user_id),
+        "quantity": qty,
+        "offer_price": offer,
+        "status": "Pending",
+        "created_at": datetime.utcnow()
+    }
+    res = orders_coll.insert_one(order)
+
+    # ✅ Notify farmer
+    db.notifications.insert_one({
+        "user_id": prod["farmer_id"],
+        "message": f"New order placed for {qty} kg of {prod['name']} by {user_obj['name']}.",
+        "created_at": datetime.utcnow(),
+        "is_read": False
+    })
+
+    return jsonify({"message": "Order placed", "order_id": str(res.inserted_id)}), 201
+
 
 @app.route("/api/buyer/orders", methods=["GET"])
 @jwt_required()
-def api_buyer_get_orders():
+def buyer_get_orders():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1213,10 +1515,10 @@ def api_buyer_get_orders():
         o["produce_name"] = r.get("produce", {}).get("name", "Unknown")
         out.append(o)
     return jsonify(out), 200
-
+'''
 @app.route("/api/buyer/notifications", methods=["GET"])
 @jwt_required()
-def api_buyer_notifications():
+def buyer_notifications():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1229,7 +1531,52 @@ def api_buyer_notifications():
         farmer = users_coll.find_one({"_id": o["farmer_id"]})
         msg = f"Your order for {o['quantity']} kg of {prod['name']} from {farmer['name']} is {o['status']}"
         notifications.append({"message": msg, "date": o["created_at"].isoformat()})
+    return jsonify(notifications), 200'''
+
+"""
+@app.route("/api/buyer/notifications", methods=["GET"])
+@jwt_required()
+def buyer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    orders_cursor = orders_coll.find({"buyer_id": ObjectId(user_id)}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        prod = produce_coll.find_one({"_id": o.get("produce_id")})
+        farmer = users_coll.find_one({"_id": o.get("farmer_id")})
+
+        # ✅ Skip if missing any linked data
+        if not prod or not farmer:
+            continue
+
+        msg = f"Your order for {o.get('quantity', 0)} kg of {prod.get('name', 'Unknown')} from {farmer.get('name', 'Unknown')} is {o.get('status', 'Pending')}"
+        created_at = o.get("created_at")
+        date_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
+        notifications.append({"message": msg, "date": date_str})
     return jsonify(notifications), 200
+"""
+
+@app.route("/api/buyer/notifications", methods=["GET"])
+@jwt_required()
+def buyer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    notifs = db.notifications.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
+    out = []
+    for n in notifs:
+        date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
+        out.append({
+            "message": n["message"],
+            "date": date_str,
+            "is_read": n.get("is_read", False)
+        })
+    return jsonify(out), 200
 
 # ---------- Misc ----------
 @app.route("/api/ping", methods=["GET"])
@@ -1237,11 +1584,5 @@ def ping():
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
 
 # ---------- Run ----------
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
-
-
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0',debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
