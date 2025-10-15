@@ -855,7 +855,7 @@ def serialize_order(order_doc):
 
 # ---------- Auth ----------
 @app.route("/api/register", methods=["POST"])
-def register():
+def api_register():
     data = request.get_json(force=True)
     required = ["name", "email", "password", "user_type", "pincode", "village", "district", "state"]
     if not all(k in data for k in required):
@@ -881,7 +881,7 @@ def register():
     return jsonify({"message": "Registration successful", "user_id": str(res.inserted_id)}), 201
 
 @app.route("/api/login", methods=["POST"])
-def login():
+def api_login():
     data = request.get_json(force=True)
     if not data.get("email") or not data.get("password") or not data.get("user_type"):
         return jsonify({"error": "Missing credentials"}), 400
@@ -902,7 +902,7 @@ def login():
 # ---------- Farmer endpoints ----------
 @app.route("/api/farmer/dashboard", methods=["GET"])
 @jwt_required()
-def farmer_dashboard():
+def api_farmer_dashboard():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -924,7 +924,7 @@ def farmer_dashboard():
 
 @app.route("/api/farmer/produce", methods=["POST"])
 @jwt_required()
-def farmer_add_produce():
+def api_farmer_add_produce():
     """
     Accepts multipart/form-data:
       fields: name, category, price, quantity
@@ -972,7 +972,7 @@ def farmer_add_produce():
 
 @app.route("/api/farmer/produce", methods=["GET"])
 @jwt_required()
-def farmer_list_produce():
+def api_farmer_list_produce():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -984,7 +984,7 @@ def farmer_list_produce():
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["PUT"])
 @jwt_required()
-def farmer_edit_produce(produce_id):
+def api_farmer_edit_produce(produce_id):
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1025,7 +1025,7 @@ def farmer_edit_produce(produce_id):
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["DELETE"])
 @jwt_required()
-def farmer_delete_produce(produce_id):
+def api_farmer_delete_produce(produce_id):
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1038,7 +1038,7 @@ def farmer_delete_produce(produce_id):
 
 @app.route("/api/farmer/orders", methods=["GET"])
 @jwt_required()
-def farmer_get_orders():
+def api_farmer_get_orders():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1276,7 +1276,7 @@ def farmer_notifications():
 
 @app.route("/api/farmer/notifications", methods=["GET"])
 @jwt_required()
-def farmer_notifications():
+def api_farmer_notifications():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
@@ -1300,7 +1300,7 @@ def farmer_notifications():
 
 @app.route("/api/buyer/dashboard", methods=["GET"])
 @jwt_required()
-def buyer_dashboard():
+def api_buyer_dashboard():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1322,7 +1322,7 @@ def buyer_dashboard():
     
 @app.route("/api/buyer/produce", methods=["GET"])
 @jwt_required()
-def buyer_list_produce():
+def api_buyer_list_produce():
     # returns all available produce
     items = list(produce_coll.find({"status": "Available"}))
     out = [serialize_produce(it) for it in items]
@@ -1507,7 +1507,7 @@ def buyer_place_order():
 
 @app.route("/api/buyer/orders", methods=["POST"])
 @jwt_required()
-def buyer_place_order():
+def api_buyer_place_order():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1556,7 +1556,7 @@ def buyer_place_order():
 
 @app.route("/api/buyer/orders", methods=["GET"])
 @jwt_required()
-def buyer_get_orders():
+def api_buyer_get_orders():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
@@ -1626,7 +1626,7 @@ def buyer_notifications():
 
 @app.route("/api/buyer/notifications", methods=["GET"])
 @jwt_required()
-def buyer_notifications():
+def api_buyer_notifications():
     user_id = get_jwt_identity()
     user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
