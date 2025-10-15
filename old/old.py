@@ -1607,5 +1607,7 @@ def ping():
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
 
 # ---------- Run ----------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=True)
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0',debug=True)
