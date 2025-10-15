@@ -1061,9 +1061,9 @@ def api_buyer_notifications():
     return jsonify(out), 200
 
 @app.route("/api/ping", methods=["GET"])
-def api_ping():
+def ping():
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
 
 # ---------- Run ----------
 if __name__ == "_main_":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", debug=True)
