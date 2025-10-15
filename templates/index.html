@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Formandi - Market Direct Access for Farmers</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background-color: #f9f9f9;
+      color: #333;
+      scroll-behavior: smooth;
+    }
+
+    /* ---------- NAVBAR ---------- */
+    nav {
+      background-color: #2e7d32;
+      color: white;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      flex-wrap: wrap;
+    }
+
+    nav .logo {
+      display: flex;
+      align-items: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    nav .logo img {
+      width: 36px;
+      height: 36px;
+      object-fit: contain;
+      border-radius: 50%;
+      transition: transform 0.3s ease;
+    }
+
+    nav .logo span {
+      color: #a5d6a7;
+      letter-spacing: 0.5px;
+      transition: color 0.3s ease;
+    }
+
+    nav .logo:hover img {
+      transform: rotate(10deg);
+    }
+
+    nav .logo:hover span {
+      color: #c8e6c9;
+    }
+
+    nav .nav-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    nav .nav-links a {
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s ease;
+    }
+
+    nav .nav-links a:hover {
+      color: #c8e6c9;
+    }
+
+    .menu-toggle {
+      display: none;
+      font-size: 24px;
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+
+    /* ---------- LOGIN BUTTON ---------- */
+    .login-btn {
+      background-color: #a5d6a7;
+      color: #1b5e20;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .login-btn:hover {
+      background-color: #c8e6c9;
+      color: #2e7d32;
+    }
+
+    .login-btn a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* ---------- HERO SECTION ---------- */
+    .hero {
+      background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)),
+        url('https://images.unsplash.com/photo-1600431521340-491eca880813?q=80&w=1920&auto=format&fit=crop')
+        center/cover no-repeat;
+      color: white;
+      text-align: center;
+      padding: 120px 20px;
+    }
+
+    .hero h1 {
+      font-size: 3em;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    .hero p {
+      font-size: 1.2em;
+      margin-bottom: 30px;
+      color: #f1f8e9;
+    }
+
+    .hero a {
+      background-color: #81c784;
+      color: #1b5e20;
+      padding: 12px 30px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    .hero a:hover {
+      background-color: #a5d6a7;
+    }
+
+    /* ---------- COMMUNITY SECTION ---------- */
+    .community {
+      max-width: 1100px;
+      margin: 80px auto;
+      padding: 0 20px;
+      text-align: center;
+    }
+
+    .community h2 {
+      color: #2e7d32;
+      font-size: 2.2em;
+      margin-bottom: 10px;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 40px;
+    }
+
+    .stat-box {
+      background: #e8f5e9;
+      border-radius: 10px;
+      padding: 30px;
+      width: 250px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .stat-box h3 {
+      color: #1b5e20;
+      font-size: 2em;
+      margin: 0;
+    }
+
+    .stat-box p {
+      color: #555;
+      margin-top: 8px;
+    }
+
+    /* ---------- ABOUT SECTION ---------- */
+    .about {
+      background: #ffffff;
+      padding: 80px 20px;
+      text-align: center;
+    }
+
+    .about h2 {
+      color: #2e7d32;
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+
+    .about p {
+      max-width: 900px;
+      margin: 0 auto;
+      color: #555;
+      line-height: 1.6em;
+      font-size: 1.1em;
+    }
+
+    .about img {
+      margin-top: 40px;
+      max-width: 90%;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    /* ---------- FEATURES SECTION ---------- */
+    .features {
+      background: #f1f8e9;
+      padding: 80px 20px;
+    }
+
+    .features h2 {
+      text-align: center;
+      color: #2e7d32;
+      font-size: 2em;
+      margin-bottom: 50px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 30px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 10px;
+      text-align: center;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .feature-card h3 {
+      color: #388e3c;
+      margin-bottom: 10px;
+    }
+
+    /* ---------- CTA SECTION ---------- */
+    .cta {
+      background: linear-gradient(90deg, #2e7d32, #388e3c);
+      color: white;
+      text-align: center;
+      padding: 80px 20px;
+    }
+
+    .cta h2 {
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+
+    .cta a {
+      background: white;
+      color: #2e7d32;
+      padding: 12px 30px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background 0.3s;
+    }
+
+    .cta a:hover {
+      background: #c8e6c9;
+    }
+
+    /* ---------- FOOTER ---------- */
+    footer {
+      background: #1b5e20;
+      color: #c8e6c9;
+      text-align: center;
+      padding: 30px 10px;
+      margin-top: 50px;
+    }
+
+    footer a {
+      color: #a5d6a7;
+      text-decoration: none;
+      margin: 0 10px;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---------- RESPONSIVE ---------- */
+    @media (max-width: 768px) {
+      nav {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .menu-toggle {
+        display: block;
+        margin-top: 10px;
+      }
+
+      nav .nav-links {
+        display: none;
+        flex-direction: column;
+        background: #2e7d32;
+        width: 100%;
+        text-align: left;
+        padding: 10px 0;
+      }
+
+      nav .nav-links.active {
+        display: flex;
+      }
+
+      .hero h1 {
+        font-size: 2em;
+      }
+
+      .login-btn {
+        margin-top: 10px;
+      }
+    }
+  </style>
+
+  <script>
+    function toggleMenu() {
+      const navLinks = document.getElementById('navLinks');
+      navLinks.classList.toggle('active');
+    }
+  </script>
+</head>
+
+<body>
+  <!-- Navbar -->
+  <nav>
+    <a class="logo" href="#home">
+      <img src="../static/logo1.png" alt="Formandi Logo">
+      <span>Formandi</span>
+    </a>
+
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+
+    <div class="nav-links" id="navLinks">
+      <a href="#home">Home</a>
+      <a href="#community">Community</a>
+      <a href="#about">About</a>
+    </div>
+
+    <button class="login-btn"><a href="/home">Login</a></button>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="home">
+    <h1>Empowering Farmers. Connecting Markets.</h1>
+    <p>
+      Formandi brings farmers and buyers together with transparency, trust, and
+      technology.
+    </p>
+    <a href="/home">Get Started</a>
+  </section>
+
+  <!-- Community Section -->
+  <section class="community" id="community">
+    <h2>Our Growing Community</h2>
+    <p>Join a network of farmers, buyers, and partners driving agricultural growth.</p>
+
+    <div class="stats">
+      <div class="stat-box">
+        <h3>2,450+</h3>
+        <p>Active Farmers</p>
+      </div>
+      <div class="stat-box">
+        <h3>1,820+</h3>
+        <p>Verified Buyers</p>
+      </div>
+      <div class="stat-box">
+        <h3>8,900+</h3>
+        <p>Successful Transactions</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- About Section -->
+  <section class="about" id="about">
+    <h2>About Formandi</h2>
+    <p>
+      Formandi is a digital bridge between farmers and buyers, enabling direct
+      market access without middlemen. Our mission is to empower rural
+      communities by ensuring fair trade, transparent pricing, and easy access
+      to a larger market.
+    </p>
+    <p style="margin-top: 15px;">
+      Founded with the vision of transforming agriculture through technology,
+      Formandi connects thousands of farmers and buyers across India — making
+      trade smarter, faster, and more sustainable.
+    </p>
+
+    <img src="../static/hand.jpg" alt="Farmers working in the field">
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <h2>Why Choose Formandi?</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>🌾 Direct Access</h3>
+        <p>Farmers can sell directly to buyers with no middlemen.</p>
+      </div>
+      <div class="feature-card">
+        <h3>💰 Fair Pricing</h3>
+        <p>Get the right value for your produce with transparent rates.</p>
+      </div>
+      <div class="feature-card">
+        <h3>📱 Easy to Use</h3>
+        <p>A simple and mobile-friendly platform built for everyone.</p>
+      </div>
+      <div class="feature-card">
+        <h3>🚚 Order Tracking</h3>
+        <p>Farmers and buyers can track every order status in real-time.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Call to Action -->
+  <section class="cta">
+    <h2>Be Part of the Formandi Revolution</h2>
+    <p>Join thousands of farmers and buyers connecting across India.</p>
+    <a href="/home">Join Now</a>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    &copy; 2025 Formandi |
+    <a href="#home">Home</a> |
+    <a href="#community">Community</a> |
+    <a href="#about">About</a> |
+    <a href="/home">Login</a>
+  </footer>
+</body>
+</html>
