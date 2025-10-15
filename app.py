@@ -1,46 +1,40 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from flask_jwt_extended import (
-    JWTManager, create_access_token,
-    jwt_required, get_jwt_identity
-)
-from flask_cors import CORS
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
-from bson.binary import Binary
-from datetime import datetime, timedelta
-import base64
-import os
+from datetime import datetime
 
-# ---------- Configuration ----------
+
+
+
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-CORS(app, supports_credentials=True)
-app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-key")
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
-jwt = JWTManager(app)
+# app.config.update(
+#     SESSION_COOKIE_SAMESITE="None",   # allow cookies across origins (Cordova WebView)
+#     SESSION_COOKIE_SECURE=False       # False for HTTP (local/dev), True for HTTPS (prod)
+# )
 
-MONGO_URI = os.environ.get(
-    "MONGO_URI",
-    "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
-)
-client = MongoClient(MONGO_URI)
+# MongoDB Setup
+# client = MongoClient("mongodb://localhost:27017/")
+mydb = "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
+client = MongoClient(mydb)
 db = client["market_db"]
 users_collection = db["users"]
 produce_collection = db["produce"]
 orders_collection = db["orders"]
 notifications_collection = db["notifications"]
 
-# ---------- Web Routes (Session-based, HTML templates) ----------
+
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
-
 @app.route('/home')
 def home():
     return render_template('auth.html')
-@app.route('/register', methods=['POST'])
 
+@app.route('/register', methods=['POST'])
 def register():
     name = request.form['name']
     email = request.form['email']
@@ -90,6 +84,7 @@ def login():
             return redirect(url_for('farmer_dashboard'))
         elif user_type == 'buyer':
             return redirect(url_for('buyer_dashboard'))
+        
         return redirect(url_for('dashboard'))
 
     flash("Invalid credentials or user type.", "error")
@@ -99,6 +94,7 @@ def login():
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('home'))
+
     return f"Welcome {session['user_name']}! You are logged in as a {session['user_type']}."
 
 @app.route('/logout')
@@ -107,6 +103,7 @@ def logout():
     flash("Logged out successfully.", "success")
     return redirect(url_for('home'))
 
+
 @app.route('/farmer/dashboard')
 def farmer_dashboard():
     if 'user_id' not in session or session['user_type'] != 'farmer':
@@ -114,10 +111,11 @@ def farmer_dashboard():
         return redirect(url_for('home'))
 
     farmer_id = ObjectId(session['user_id'])
-    total_produce = produce_collection.count_documents({'farmer_id': farmer_id})
-    total_orders = orders_collection.count_documents({'farmer_id': farmer_id})
-    accepted_orders = orders_collection.count_documents({'farmer_id': farmer_id, 'status': 'Accepted'})
-    pending_orders = orders_collection.count_documents({'farmer_id': farmer_id, 'status': 'Pending'})
+
+    total_produce = db.produce.count_documents({'farmer_id': farmer_id})
+    total_orders = db.orders.count_documents({'farmer_id': farmer_id})
+    accepted_orders = db.orders.count_documents({'farmer_id': farmer_id, 'status': 'Accepted'})
+    pending_orders = db.orders.count_documents({'farmer_id': farmer_id, 'status': 'Pending'})
 
     if pending_orders > 0:
         flash(f"🛎 You have {pending_orders} new order(s) pending!", "info")
@@ -130,9 +128,16 @@ def farmer_dashboard():
         accepted_orders=accepted_orders
     )
 
+
+
+import base64
+
 @app.template_filter('b64encode')
 def b64encode_filter(data):
     return base64.b64encode(data).decode('utf-8')
+
+from bson.binary import Binary
+from datetime import datetime
 
 @app.route('/farmer/add', methods=['GET', 'POST'])
 def farmer_add():
@@ -154,7 +159,7 @@ def farmer_add():
             image_data = Binary(image.read())
             image_type = image.mimetype
 
-        produce_collection.insert_one({
+        db['produce'].insert_one({
             "farmer_id": ObjectId(session['user_id']),
             "name": name,
             "category": category,
@@ -171,6 +176,7 @@ def farmer_add():
 
     return render_template('farmer_add.html')
 
+
 @app.route('/farmer/my-produce')
 def farmer_my_produce():
     if 'user_id' not in session or session['user_type'] != 'farmer':
@@ -180,13 +186,18 @@ def farmer_my_produce():
     produce = list(produce_collection.find({"farmer_id": ObjectId(session['user_id'])}))
     return render_template('farmer_my_produce.html', produce=produce)
 
+
+
+from bson.objectid import ObjectId
+from bson.binary import Binary
+
 @app.route('/farmer/edit/<produce_id>', methods=['GET', 'POST'])
 def farmer_edit_produce(produce_id):
     if 'user_id' not in session or session['user_type'] != 'farmer':
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    produce = produce_collection.find_one({"_id": ObjectId(produce_id)})
+    produce = db['produce'].find_one({"_id": ObjectId(produce_id)})
 
     if not produce or produce['farmer_id'] != ObjectId(session['user_id']):
         flash("Produce not found or permission denied", "error")
@@ -204,7 +215,7 @@ def farmer_edit_produce(produce_id):
             updated_fields['image_data'] = Binary(image.read())
             updated_fields['image_type'] = image.mimetype
 
-        produce_collection.update_one(
+        db['produce'].update_one(
             {"_id": ObjectId(produce_id)},
             {"$set": updated_fields}
         )
@@ -213,6 +224,9 @@ def farmer_edit_produce(produce_id):
         return redirect(url_for('farmer_my_produce'))
 
     return render_template('farmer_edit_produce.html', item=produce)
+
+
+
 
 @app.route('/farmer/delete/<produce_id>')
 def farmer_delete_produce(produce_id):
@@ -224,6 +238,37 @@ def farmer_delete_produce(produce_id):
     flash("Produce deleted.", "success")
     return redirect(url_for('farmer_my_produce'))
 
+
+from bson.objectid import ObjectId
+from datetime import datetime
+'''
+@app.route('/farmer/orders')
+def farmer_orders():
+    if 'user_id' not in session or session['user_type'] != 'farmer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    orders = db.orders.find({'farmer_id': ObjectId(session['user_id'])})
+    result = []
+
+    for order in orders:
+        buyer = db.users.find_one({'_id': order['buyer_id']})
+        produce = db.produce.find_one({'_id': order['produce_id']})
+        result.append({
+            '_id': str(order['_id']),
+            'buyer_name': buyer['name'] if buyer else 'Unknown',
+            'produce_name': produce['name'] if produce else 'Unknown',
+            'quantity': order['quantity'],
+            'offer_price': order['offer_price'],
+            'status': order['status'],
+            'created_at': order['created_at'].strftime('%Y-%m-%d')
+        })
+
+    return render_template('farmer_orders.html', orders=result)
+'''
+
+
+
 @app.route('/farmer/orders')
 def farmer_orders():
     if 'user_id' not in session or session['user_type'] != 'farmer':
@@ -231,6 +276,7 @@ def farmer_orders():
         return redirect(url_for('home'))
 
     farmer_id = ObjectId(session['user_id'])
+
     pipeline = [
         {"$match": {"farmer_id": farmer_id}},
         {
@@ -244,7 +290,10 @@ def farmer_orders():
         {"$unwind": "$produce"},
         {"$sort": {"created_at": -1}}
     ]
-    orders = list(orders_collection.aggregate(pipeline))
+
+    orders = list(db.orders.aggregate(pipeline))
+
+    # Flatten data for easier template access
     formatted_orders = []
     for order in orders:
         buyer_details = order.get("buyer_details", {})
@@ -258,7 +307,9 @@ def farmer_orders():
             "buyer_phone": buyer_details.get("phone", "—"),
             "buyer_address": buyer_details.get("address", "—"),
         })
+
     return render_template('farmer_orders.html', orders=formatted_orders)
+
 
 @app.route('/farmer/order/<order_id>/<action>')
 def farmer_update_order(order_id, action):
@@ -266,7 +317,7 @@ def farmer_update_order(order_id, action):
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    order = orders_collection.find_one({'_id': ObjectId(order_id)})
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
     if not order:
         flash("Order not found.", "error")
         return redirect(url_for('farmer_orders'))
@@ -284,24 +335,28 @@ def farmer_update_order(order_id, action):
         return redirect(url_for('farmer_orders'))
 
     new_status = valid_actions[action]
-    orders_collection.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+    db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
 
-    produce = produce_collection.find_one({'_id': order['produce_id']})
-    notifications_collection.insert_one({
+    # ✅ Buyer notification
+    produce = db.produce.find_one({'_id': order['produce_id']})
+    db.notifications.insert_one({
         "user_id": order['buyer_id'],
         "message": f"Your order for {produce['name']} is now {new_status}.",
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(),
         "is_read": False
     })
 
+    # ✅ Optional: Reduce produce quantity if delivered
     if new_status == "Delivered":
-        produce_collection.update_one(
+        db.produce.update_one(
             {'_id': order['produce_id']},
             {'$inc': {'quantity': -order['quantity']}}
         )
 
     flash(f"Order marked as {new_status}.", "success")
     return redirect(url_for('farmer_orders'))
+
+
 
 @app.route('/farmer/orders/accept/<order_id>')
 def farmer_accept_order(order_id):
@@ -314,6 +369,66 @@ def farmer_reject_order(order_id):
     db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': 'Rejected'}})
     flash("Order rejected.", "info")
     return redirect(url_for('farmer_orders'))
+'''
+@app.route('/farmer/order/<order_id>/<action>')
+def farmer_update_order(order_id, action):
+    if 'user_id' not in session or session['user_type'] != 'farmer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        flash("Order not found.", "error")
+        return redirect(url_for('farmer_orders'))
+
+    if action.lower() in ['accept', 'reject']:
+        new_status = 'Accepted' if action.lower() == 'accept' else 'Rejected'
+        db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+        
+        # 🔔 Send buyer notification
+        produce = db.produce.find_one({'_id': order['produce_id']})
+        db.notifications.insert_one({
+            "user_id": order['buyer_id'],
+            "message": f"Your order for {produce['name']} was {new_status.lower()}.",
+            "created_at": datetime.now(),
+            "is_read": False
+        })
+
+        flash(f"Order {new_status.lower()} successfully.", "success")
+    else:
+        flash("Invalid action.", "error")
+
+    return redirect(url_for('farmer_orders'))
+
+
+notifications_collection = db['notifications']
+'''
+
+'''
+@app.route('/farmer/notifications')
+def farmer_notifications():
+    if 'user_id' not in session or session['user_type'] != 'farmer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    farmer_id = ObjectId(session['user_id'])
+
+    orders = db.orders.find({'farmer_id': farmer_id}).sort('created_at', -1)
+    notifications = []
+
+    for order in orders:
+        produce = db.produce.find_one({'_id': order['produce_id']})
+        buyer = db.users.find_one({'_id': order['buyer_id']})
+
+        message = f"{buyer['name']} placed an order for {order['quantity']} kg of {produce['name']} - Status: {order['status']}"
+        notifications.append({
+            'message': message,
+            'date': order['created_at'].strftime('%Y-%m-%d %H:%M')
+        })
+
+    return render_template('farmer_notifications.html', notifications=notifications)
+
+'''
 
 @app.route('/farmer/notifications')
 def farmer_notifications():
@@ -322,7 +437,7 @@ def farmer_notifications():
         return redirect(url_for('home'))
 
     farmer_id = ObjectId(session['user_id'])
-    notifs = notifications_collection.find({"user_id": farmer_id}).sort("created_at", -1)
+    notifs = db.notifications.find({"user_id": farmer_id}).sort("created_at", -1)
     notifications = []
     for n in notifs:
         date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
@@ -331,9 +446,16 @@ def farmer_notifications():
             "date": date_str,
             "is_read": n.get("is_read", False)
         })
+
     return render_template("farmer_notifications.html", notifications=notifications)
 
-# ---------- Buyer Web Routes ----------
+
+
+#-------------buyer routes----------------
+
+from bson.objectid import ObjectId
+from flask import render_template, session, redirect, url_for, flash
+
 @app.route('/buyer/dashboard')
 def buyer_dashboard():
     if 'user_id' not in session or session.get('user_type') != 'buyer':
@@ -341,9 +463,10 @@ def buyer_dashboard():
         return redirect(url_for('home'))
 
     buyer_id = ObjectId(session['user_id'])
-    total_orders = orders_collection.count_documents({'buyer_id': buyer_id})
-    accepted_orders = orders_collection.count_documents({'buyer_id': buyer_id, 'status': 'Accepted'})
-    rejected_orders = orders_collection.count_documents({'buyer_id': buyer_id, 'status': 'Rejected'})
+
+    total_orders = db.orders.count_documents({'buyer_id': buyer_id})
+    accepted_orders = db.orders.count_documents({'buyer_id': buyer_id, 'status': 'Accepted'})
+    rejected_orders = db.orders.count_documents({'buyer_id': buyer_id, 'status': 'Rejected'})
 
     return render_template(
         'buyer_dashboard.html',
@@ -353,25 +476,32 @@ def buyer_dashboard():
         rejected_orders=rejected_orders
     )
 
+import base64
+
 @app.route('/buyer/produce')
 def buyer_produce():
     if 'user_id' not in session or session['user_type'] != 'buyer':
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    produce_items = produce_collection.find({'status': 'Available'})
+    produce_items = db.produce.find({'status': 'Available'})
+
     listings = []
     for item in produce_items:
-        farmer = users_collection.find_one({'_id': item['farmer_id']})
+        farmer = db.users.find_one({'_id': item['farmer_id']})
+
+        # Convert image binary to base64
         photo = ''
         if item.get('image_data') and item.get('image_type'):
             image_binary = item['image_data']
             image_type = item['image_type']
             photo = f"data:{image_type};base64," + base64.b64encode(image_binary).decode('utf-8')
         else:
+            # Fallback image (optional)
             with open('static/default.png', 'rb') as f:
                 fallback = base64.b64encode(f.read()).decode('utf-8')
                 photo = f"data:image/png;base64,{fallback}"
+
         listings.append({
             'id': str(item['_id']),
             'name': item['name'],
@@ -381,7 +511,74 @@ def buyer_produce():
             'photo': photo,
             'farmer_name': farmer['name'] if farmer else "Unknown"
         })
+
     return render_template('buyer_produce.html', listings=listings)
+
+from datetime import datetime
+import base64
+'''
+@app.route('/buyer/produce/<produce_id>')
+def buyer_view_produce(produce_id):
+    if 'user_id' not in session or session['user_type'] != 'buyer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    if not produce:
+        flash("Produce not found or unavailable.", "error")
+        return redirect(url_for('buyer_produce'))
+
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+    produce_data = {
+        'id': produce_id,
+        'name': produce['name'],
+        'category': produce['category'],
+        'price': produce['price'],
+        'quantity': produce['quantity'],
+        'photo': produce.get('photo_base64', ''),
+        'farmer_name': farmer['name'] if farmer else 'Unknown'
+    }
+
+    return render_template('buyer_view_produce.html', produce=produce_data)
+
+
+@app.route('/buyer/produce/<produce_id>', methods=['POST'])
+def buyer_place_order(produce_id):
+    if 'user_id' not in session or session['user_type'] != 'buyer':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('home'))
+
+    produce = db.produce.find_one({'_id': ObjectId(produce_id)})
+    if not produce or produce['status'] != 'Available':
+        flash("Invalid or unavailable produce.", "error")
+        return redirect(url_for('buyer_produce'))
+
+    try:
+        quantity = int(request.form['quantity'])
+        offer_price = float(request.form['offer_price'])
+    except ValueError:
+        flash("Invalid quantity or price input.", "error")
+        return redirect(url_for('buyer_view_produce', produce_id=produce_id))
+
+    if quantity <= 0 or quantity > produce['quantity']:
+        flash("Invalid quantity.", "error")
+        return redirect(url_for('buyer_view_produce', produce_id=produce_id))
+
+    order = {
+        'produce_id': produce['_id'],
+        'farmer_id': produce['farmer_id'],
+        'buyer_id': ObjectId(session['user_id']),
+        'quantity': quantity,
+        'offer_price': offer_price,
+        'status': 'Pending',
+        'created_at': datetime.now()
+    }
+
+    db.orders.insert_one(order)
+    flash("Order placed successfully.", "success")
+    return redirect(url_for('buyer_orders'))
+'''
+
 
 @app.route('/buyer/produce/<produce_id>', methods=['GET', 'POST'])
 def buyer_view_produce(produce_id):
@@ -389,12 +586,14 @@ def buyer_view_produce(produce_id):
         flash("Unauthorized access", "error")
         return redirect(url_for('home'))
 
-    produce = produce_collection.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
     if not produce:
         flash("Produce not found or unavailable.", "error")
         return redirect(url_for('buyer_produce'))
 
-    farmer = users_collection.find_one({'_id': produce['farmer_id']})
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+
+    # Convert image to base64
     photo = ''
     if produce.get('image_data'):
         photo = f"data:{produce['image_type']};base64," + base64.b64encode(produce['image_data']).decode('utf-8')
@@ -409,6 +608,7 @@ def buyer_view_produce(produce_id):
         'farmer_name': farmer['name'] if farmer else "Unknown"
     }
 
+    # Handle order placement
     if request.method == 'POST':
         try:
             quantity = int(request.form['quantity'])
@@ -439,17 +639,24 @@ def buyer_view_produce(produce_id):
                 'address': buyer_address
             }
         }
-        orders_collection.insert_one(order)
-        notifications_collection.insert_one({
+
+        db.orders.insert_one(order)
+
+        # Add notification for farmer
+        db.notifications.insert_one({
             "user_id": produce['farmer_id'],
             "message": f"New order placed for {quantity} kg of {produce['name']} by {buyer_name}.",
             "created_at": datetime.utcnow(),
             "is_read": False
         })
+
         flash("Order placed successfully!", "success")
         return redirect(url_for('buyer_orders'))
 
     return render_template('buyer_view_produce.html', produce=produce_data)
+
+
+
 
 @app.route('/buyer/orders')
 def buyer_orders():
@@ -458,6 +665,7 @@ def buyer_orders():
         return redirect(url_for('home'))
 
     buyer_id = ObjectId(session['user_id'])
+
     pipeline = [
         {"$match": {"buyer_id": buyer_id}},
         {
@@ -480,8 +688,11 @@ def buyer_orders():
         },
         {"$sort": {"created_at": -1}}
     ]
-    orders = list(orders_collection.aggregate(pipeline))
+
+    orders = list(db.orders.aggregate(pipeline))
+
     return render_template("buyer_orders.html", orders=orders)
+
 
 @app.route('/buyer/notifications')
 def buyer_notifications():
@@ -490,7 +701,7 @@ def buyer_notifications():
         return redirect(url_for('home'))
 
     buyer_id = ObjectId(session['user_id'])
-    notifs = notifications_collection.find({"user_id": buyer_id}).sort("created_at", -1)
+    notifs = db.notifications.find({"user_id": buyer_id}).sort("created_at", -1)
     notifications = []
     for n in notifs:
         date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
@@ -499,7 +710,12 @@ def buyer_notifications():
             "date": date_str,
             "is_read": n.get("is_read", False)
         })
+
     return render_template("buyer_notifications.html", notifications=notifications)
+
+
+
+
 
 
 
@@ -525,8 +741,78 @@ def buyer_notifications():
 # A               A     P                 P      
 # A               A     P                 P  
 
+# app.py
+from flask import Flask, request, jsonify,session
+from flask_jwt_extended import (
+    JWTManager, create_access_token,
+    jwt_required, get_jwt_identity
+)
+from flask_cors import CORS
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+from werkzeug.security import generate_password_hash, check_password_hash
+from bson.binary import Binary
+from datetime import datetime, timedelta
+import base64
+import os
 
-# ---------- API Routes (JWT, JSON responses) ----------
+# ---------- Configuration ----------
+# app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
+# Secret keys (change in production; use env vars)
+app.config["JWT_SECRET_KEY"] = os.environ.get("JWT_SECRET_KEY", "super-secret-key")
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
+
+jwt = JWTManager(app)
+
+# MongoDB connection (use your URI)
+MONGO_URI = os.environ.get(
+    "MONGO_URI",
+    "mongodb+srv://i_am_swaroop:swaroop%402004@theswaroopdb.ofpw0zm.mongodb.net/?retryWrites=true&w=majority&appName=theswaroopdb"
+)
+client = MongoClient(MONGO_URI)
+db = client["market_db"]
+
+# Collections
+users_coll = db["users"]
+produce_coll = db["produce"]
+orders_coll = db["orders"]
+
+# New endpoint to fetch user profile details
+@app.route("/api/profile", methods=["GET"])
+@jwt_required()
+def get_profile():
+    user_id = get_jwt_identity()
+    user = users_coll.find_one({"_id": ObjectId(user_id)}, {"password": 0}) # Exclude password
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+        
+    # Serialize the user data for JSON response
+    profile_data = {
+        "id": str(user["_id"]),
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "user_type": user.get("user_type"),
+        "pincode": user.get("pincode"),
+        "village": user.get("village"),
+        "district": user.get("district"),
+        "state": user.get("state"),
+        "created_at": user.get("created_at").isoformat()
+    }
+    
+    return jsonify(profile_data), 200
+
+
+@app.route("/api/notifications/mark_read", methods=["PUT"])
+@jwt_required()
+def mark_notifications_read():
+    user_id = get_jwt_identity()
+    db.notifications.update_many({"user_id": ObjectId(user_id), "is_read": False}, {"$set": {"is_read": True}})
+    return jsonify({"message": "All notifications marked as read"}), 200
+
+
 
 # ---------- Helpers ----------
 def obj_id(o):
@@ -567,49 +853,16 @@ def serialize_order(order_doc):
     }
     return out
 
-def serialize_produce(item):
-    out = {
-        "id": str(item["_id"]),
-        "farmer_id": str(item["farmer_id"]),
-        "name": item.get("name"),
-        "category": item.get("category"),
-        "price": item.get("price"),
-        "quantity": item.get("quantity"),
-        "listed_on": item.get("listed_on"),
-        "status": item.get("status"),
-    }
-    if item.get("image_data") and item.get("image_type"):
-        try:
-            b64 = base64.b64encode(item["image_data"]).decode("utf-8")
-            out["photo"] = f"data:{item['image_type']};base64,{b64}"
-        except Exception:
-            out["photo"] = ""
-    else:
-        out["photo"] = ""
-    return out
-
-def serialize_order(order_doc):
-    out = {
-        "_id": str(order_doc.get("_id")),
-        "produce_id": str(order_doc.get("produce_id")),
-        "farmer_id": str(order_doc.get("farmer_id")),
-        "buyer_id": str(order_doc.get("buyer_id")),
-        "quantity": order_doc.get("quantity"),
-        "offer_price": order_doc.get("offer_price"),
-        "status": order_doc.get("status"),
-        "created_at": order_doc.get("created_at").isoformat() if isinstance(order_doc.get("created_at"), datetime) else order_doc.get("created_at")
-    }
-    return out
-
+# ---------- Auth ----------
 @app.route("/api/register", methods=["POST"])
-def api_register():
+def register():
     data = request.get_json(force=True)
     required = ["name", "email", "password", "user_type", "pincode", "village", "district", "state"]
     if not all(k in data for k in required):
         return jsonify({"error": "Missing fields"}), 400
 
     email = data["email"].strip().lower()
-    if users_collection.find_one({"email": email}):
+    if users_coll.find_one({"email": email}):
         return jsonify({"error": "Email already registered"}), 400
 
     hashed = generate_password_hash(data["password"])
@@ -624,17 +877,17 @@ def api_register():
         "state": data["state"],
         "created_at": datetime.utcnow()
     }
-    res = users_collection.insert_one(user_doc)
+    res = users_coll.insert_one(user_doc)
     return jsonify({"message": "Registration successful", "user_id": str(res.inserted_id)}), 201
 
 @app.route("/api/login", methods=["POST"])
-def api_login():
+def login():
     data = request.get_json(force=True)
     if not data.get("email") or not data.get("password") or not data.get("user_type"):
         return jsonify({"error": "Missing credentials"}), 400
 
     email = data["email"].strip().lower()
-    user = users_collection.find_one({"email": email, "user_type": data["user_type"]})
+    user = users_coll.find_one({"email": email, "user_type": data["user_type"]})
     if not user or not check_password_hash(user["password"], data["password"]):
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -646,46 +899,20 @@ def api_login():
         "user_type": user["user_type"]
     }), 200
 
-@app.route("/api/profile", methods=["GET"])
-@jwt_required()
-def api_profile():
-    user_id = get_jwt_identity()
-    user = users_collection.find_one({"_id": ObjectId(user_id)}, {"password": 0})
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-    profile_data = {
-        "id": str(user["_id"]),
-        "name": user.get("name"),
-        "email": user.get("email"),
-        "user_type": user.get("user_type"),
-        "pincode": user.get("pincode"),
-        "village": user.get("village"),
-        "district": user.get("district"),
-        "state": user.get("state"),
-        "created_at": user.get("created_at").isoformat() if isinstance(user.get("created_at"), datetime) else str(user.get("created_at"))
-    }
-    return jsonify(profile_data), 200
-
-@app.route("/api/notifications/mark_read", methods=["PUT"])
-@jwt_required()
-def api_mark_notifications_read():
-    user_id = get_jwt_identity()
-    notifications_collection.update_many({"user_id": ObjectId(user_id), "is_read": False}, {"$set": {"is_read": True}})
-    return jsonify({"message": "All notifications marked as read"}), 200
-
+# ---------- Farmer endpoints ----------
 @app.route("/api/farmer/dashboard", methods=["GET"])
 @jwt_required()
-def api_farmer_dashboard():
+def farmer_dashboard():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
     farmer_id = ObjectId(user_id)
-    total_produce = produce_collection.count_documents({"farmer_id": farmer_id})
-    total_orders = orders_collection.count_documents({"farmer_id": farmer_id})
-    accepted_orders = orders_collection.count_documents({"farmer_id": farmer_id, "status": "Accepted"})
-    pending_orders = orders_collection.count_documents({"farmer_id": farmer_id, "status": "Pending"})
+    total_produce = produce_coll.count_documents({"farmer_id": farmer_id})
+    total_orders = orders_coll.count_documents({"farmer_id": farmer_id})
+    accepted_orders = orders_coll.count_documents({"farmer_id": farmer_id, "status": "Accepted"})
+    pending_orders = orders_coll.count_documents({"farmer_id": farmer_id, "status": "Pending"})
 
     return jsonify({
         "name": user_obj["name"],
@@ -697,9 +924,14 @@ def api_farmer_dashboard():
 
 @app.route("/api/farmer/produce", methods=["POST"])
 @jwt_required()
-def api_farmer_add_produce():
+def farmer_add_produce():
+    """
+    Accepts multipart/form-data:
+      fields: name, category, price, quantity
+      file: image (optional)
+    """
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -735,33 +967,34 @@ def api_farmer_add_produce():
         "image_data": image_data,
         "image_type": image_type
     }
-    res = produce_collection.insert_one(doc)
+    res = produce_coll.insert_one(doc)
     return jsonify({"message": "Produce added", "produce_id": str(res.inserted_id)}), 201
 
 @app.route("/api/farmer/produce", methods=["GET"])
 @jwt_required()
-def api_farmer_list_produce():
+def farmer_list_produce():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    items = list(produce_collection.find({"farmer_id": ObjectId(user_id)}))
+    items = list(produce_coll.find({"farmer_id": ObjectId(user_id)}))
     out = [serialize_produce(it) for it in items]
     return jsonify(out), 200
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["PUT"])
 @jwt_required()
-def api_farmer_edit_produce(produce_id):
+def farmer_edit_produce(produce_id):
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    item = produce_collection.find_one({"_id": ObjectId(produce_id)})
+    item = produce_coll.find_one({"_id": ObjectId(produce_id)})
     if not item or item["farmer_id"] != ObjectId(user_id):
         return jsonify({"error": "Not found or permission denied"}), 404
 
+    # Accept form-data for updates (price, quantity, status, optional image)
     price = request.form.get("price")
     quantity = request.form.get("quantity")
     status = request.form.get("status")
@@ -785,53 +1018,110 @@ def api_farmer_edit_produce(produce_id):
         updates["image_type"] = image.mimetype
 
     if updates:
-        produce_collection.update_one({"_id": ObjectId(produce_id)}, {"$set": updates})
+        produce_coll.update_one({"_id": ObjectId(produce_id)}, {"$set": updates})
         return jsonify({"message": "Produce updated"}), 200
     else:
         return jsonify({"error": "No updates provided"}), 400
 
 @app.route("/api/farmer/produce/<produce_id>", methods=["DELETE"])
 @jwt_required()
-def api_farmer_delete_produce(produce_id):
+def farmer_delete_produce(produce_id):
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    res = produce_collection.delete_one({"_id": ObjectId(produce_id), "farmer_id": ObjectId(user_id)})
+    res = produce_coll.delete_one({"_id": ObjectId(produce_id), "farmer_id": ObjectId(user_id)})
     if res.deleted_count == 0:
         return jsonify({"error": "Not found or permission denied"}), 404
     return jsonify({"message": "Produce deleted"}), 200
 
 @app.route("/api/farmer/orders", methods=["GET"])
 @jwt_required()
-def api_farmer_get_orders():
+def farmer_get_orders():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
     farmer_id = ObjectId(user_id)
-    orders_cursor = orders_collection.find({"farmer_id": farmer_id}).sort("created_at", -1)
+    orders_cursor = orders_coll.find({"farmer_id": farmer_id}).sort("created_at", -1)
     out = []
     for o in orders_cursor:
-        buyer = users_collection.find_one({"_id": o["buyer_id"]})
-        prod = produce_collection.find_one({"_id": o["produce_id"]})
+        buyer = users_coll.find_one({"_id": o["buyer_id"]})
+        prod = produce_coll.find_one({"_id": o["produce_id"]})
         od = serialize_order(o)
         od["buyer_name"] = buyer["name"] if buyer else "Unknown"
         od["produce_name"] = prod["name"] if prod else "Unknown"
         out.append(od)
     return jsonify(out), 200
 
+'''
+@app.route('/api/farmer/order/<order_id>/<action>', methods=['PUT'])
+@jwt_required()
+
+def api_farmer_update_order(order_id, action):
+    # ✅ Check farmer authentication
+    if 'user_id' not in session or session.get('user_type') != 'farmer':
+        return jsonify({"error": "Unauthorized access"}), 403
+
+    # ✅ Find the order
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    # ✅ Valid actions
+    valid_actions = {
+        'accept': 'Accepted',
+        'reject': 'Rejected',
+        'pack': 'Packed',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered'
+    }
+
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+
+    new_status = valid_actions[action]
+
+    # ✅ Update order status
+    db.orders.update_one(
+        {'_id': ObjectId(order_id)},
+        {'$set': {'status': new_status}}
+    )
+
+    # ✅ Notify buyer
+    produce = db.produce.find_one({'_id': order['produce_id']})
+    db.notifications.insert_one({
+        "user_id": order['buyer_id'],
+        "message": f"Your order for {produce['name']} is now {new_status}.",
+        "created_at": datetime.now(),
+        "is_read": False
+    })
+
+    # ✅ If delivered, reduce stock
+    if new_status == "Delivered":
+        db.produce.update_one(
+            {'_id': order['produce_id']},
+            {'$inc': {'quantity': -order['quantity']}}
+        )
+
+    return jsonify({
+        "message": f"Order marked as {new_status}.",
+        "status": new_status,
+        "order_id": order_id
+    }), 200'''
+
+"""
 @app.route('/api/farmer/orders/<order_id>/<action>', methods=['PUT'])
 @jwt_required()
 def api_farmer_update_order(order_id, action):
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    order = orders_collection.find_one({'_id': ObjectId(order_id)})
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
     if not order:
         return jsonify({"error": "Order not found"}), 404
 
@@ -847,34 +1137,153 @@ def api_farmer_update_order(order_id, action):
         return jsonify({"error": "Invalid action"}), 400
 
     new_status = valid_actions[action]
-    orders_collection.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
-    produce = produce_collection.find_one({'_id': order['produce_id']})
-    notifications_collection.insert_one({
+    db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+
+    produce = db.produce.find_one({'_id': order['produce_id']})
+    db.notifications.insert_one({
         "user_id": order['buyer_id'],
         "message": f"Your order for {produce['name']} is now {new_status}.",
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(),
         "is_read": False
     })
+
     if new_status == "Delivered":
-        produce_collection.update_one(
+        db.produce.update_one(
             {'_id': order['produce_id']},
             {'$inc': {'quantity': -order['quantity']}}
         )
+
     return jsonify({
         "message": f"Order marked as {new_status}.",
         "status": new_status,
         "order_id": order_id
     }), 200
 
-@app.route("/api/farmer/notifications", methods=["GET"])
+@app.route("/api/farmer/orders/<order_id>/reject", methods=["PUT"])
 @jwt_required()
-def api_farmer_notifications():
+def farmer_reject_order(order_id):
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "farmer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    notifs = notifications_collection.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
+    res = orders_coll.update_one({"_id": ObjectId(order_id), "farmer_id": ObjectId(user_id)}, {"$set": {"status": "Rejected"}})
+    if res.matched_count == 0:
+        return jsonify({"error": "Order not found or permission denied"}), 404
+    return jsonify({"message": "Order rejected"}), 200
+"""
+
+
+
+@app.route('/api/farmer/orders/<order_id>/<action>', methods=['PUT'])
+@jwt_required()
+def api_farmer_update_order(order_id, action):
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    order = db.orders.find_one({'_id': ObjectId(order_id)})
+    if not order:
+        return jsonify({"error": "Order not found"}), 404
+
+    valid_actions = {
+        'accept': 'Accepted',
+        'reject': 'Rejected',
+        'pack': 'Packed',
+        'out_for_delivery': 'Out for Delivery',
+        'delivered': 'Delivered'
+    }
+
+    if action not in valid_actions:
+        return jsonify({"error": "Invalid action"}), 400
+
+    new_status = valid_actions[action]
+    db.orders.update_one({'_id': ObjectId(order_id)}, {'$set': {'status': new_status}})
+
+    produce = db.produce.find_one({'_id': order['produce_id']})
+
+    # ✅ Notify buyer about status change
+    db.notifications.insert_one({
+        "user_id": order['buyer_id'],
+        "message": f"Your order for {produce['name']} is now {new_status}.",
+        "created_at": datetime.utcnow(),
+        "is_read": False
+    })
+
+    # ✅ If delivered, reduce stock
+    if new_status == "Delivered":
+        db.produce.update_one(
+            {'_id': order['produce_id']},
+            {'$inc': {'quantity': -order['quantity']}}
+        )
+
+    return jsonify({
+        "message": f"Order marked as {new_status}.",
+        "status": new_status,
+        "order_id": order_id
+    }), 200
+
+
+
+
+'''@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    farmer_id = ObjectId(user_id)
+    orders_cursor = orders_coll.find({"farmer_id": farmer_id}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        buyer = users_coll.find_one({"_id": o["buyer_id"]})
+        prod = produce_coll.find_one({"_id": o["produce_id"]})
+        msg = f"{buyer['name']} placed an order for {o['quantity']} kg of {prod['name']} - Status: {o['status']}"
+        notifications.append({"message": msg, "date": o["created_at"].isoformat()})
+    return jsonify(notifications), 200'''
+    
+"""@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    farmer_id = ObjectId(user_id)
+    orders_cursor = orders_coll.find({"farmer_id": farmer_id}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        buyer = users_coll.find_one({"_id": o.get("buyer_id")})
+        prod = produce_coll.find_one({"_id": o.get("produce_id")})
+
+        # ✅ Skip if missing any linked data
+        if not buyer or not prod:
+            continue
+
+        msg = f"{buyer['name']} placed an order for {o.get('quantity', 0)} kg of {prod.get('name', 'Unknown')} - Status: {o.get('status', 'Pending')}"
+        created_at = o.get("created_at")
+        date_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
+        notifications.append({"message": msg, "date": date_str})
+    return jsonify(notifications), 200
+"""
+
+
+
+
+@app.route("/api/farmer/notifications", methods=["GET"])
+@jwt_required()
+def farmer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "farmer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # ✅ Read from notifications collection
+    notifs = db.notifications.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
     out = []
     for n in notifs:
         date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
@@ -885,18 +1294,23 @@ def api_farmer_notifications():
         })
     return jsonify(out), 200
 
+
+# ---------- Buyer endpoints ----------
+
+
 @app.route("/api/buyer/dashboard", methods=["GET"])
 @jwt_required()
-def api_buyer_dashboard():
+def buyer_dashboard():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
         return jsonify({"error": "Unauthorized"}), 403
 
     buyer_id = ObjectId(user_id)
-    total_orders = orders_collection.count_documents({"buyer_id": buyer_id})
-    accepted_orders = orders_collection.count_documents({"buyer_id": buyer_id, "status": "Accepted"})
-    rejected_orders = orders_collection.count_documents({"buyer_id": buyer_id, "status": "Rejected"})
+    total_orders = orders_coll.count_documents({"buyer_id": buyer_id})
+    accepted_orders = orders_coll.count_documents({"buyer_id": buyer_id, "status": "Accepted"})
+    rejected_orders = orders_coll.count_documents({"buyer_id": buyer_id, "status": "Rejected"})
+    
     return jsonify({
         "name": user_obj["name"],
         "total_orders": total_orders,
@@ -904,24 +1318,35 @@ def api_buyer_dashboard():
         "rejected_orders": rejected_orders
     }), 200
 
+
+    
 @app.route("/api/buyer/produce", methods=["GET"])
 @jwt_required()
-def api_buyer_list_produce():
-    items = list(produce_collection.find({"status": "Available"}))
+def buyer_list_produce():
+    # returns all available produce
+    items = list(produce_coll.find({"status": "Available"}))
     out = [serialize_produce(it) for it in items]
     return jsonify(out), 200
 
+
+'''
 @app.route('/api/buyer/produce/<produce_id>', methods=['GET', 'POST'])
 @jwt_required()
 def api_buyer_view_produce(produce_id):
-    produce = produce_collection.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    
+    # ✅ Fetch the produce
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
     if not produce:
         return jsonify({"error": "Produce not found or unavailable"}), 404
 
-    farmer = users_collection.find_one({'_id': produce['farmer_id']})
+    # ✅ Get farmer details
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+
+    # ✅ Convert image to base64
     photo = ''
     if produce.get('image_data'):
         photo = f"data:{produce['image_type']};base64," + base64.b64encode(produce['image_data']).decode('utf-8')
+
     produce_data = {
         'id': str(produce['_id']),
         'name': produce['name'],
@@ -931,50 +1356,121 @@ def api_buyer_view_produce(produce_id):
         'photo': photo,
         'farmer_name': farmer['name'] if farmer else "Unknown"
     }
+
+    # ✅ If GET — return produce details
     if request.method == 'GET':
-        return jsonify({"produce": produce_data}), 200
+        return jsonify({
+            "produce": produce_data
+        }), 200
+
+    # ✅ If POST — handle order placement
     if request.method == 'POST':
         data = request.get_json()
-        user_id = get_jwt_identity()
+
+        # Validate inputs
         try:
             quantity = int(data.get('quantity', 0))
             offer_price = float(data.get('offer_price', 0))
         except (TypeError, ValueError):
             return jsonify({"error": "Invalid input for quantity or price"}), 400
+
         if quantity <= 0 or quantity > produce['quantity']:
             return jsonify({"error": "Invalid quantity selected"}), 400
+
         buyer_details = {
             'name': data.get('buyer_name', ''),
             'phone': data.get('buyer_phone', ''),
             'address': data.get('buyer_address', '')
         }
-        orders_collection.insert_one({
+
+        # ✅ Create order
+        db.orders.insert_one({
             'produce_id': produce['_id'],
             'farmer_id': produce['farmer_id'],
-            'buyer_id': ObjectId(user_id),
+            'buyer_id': ObjectId(session['user_id']),
             'quantity': quantity,
             'offer_price': offer_price,
             'status': 'Pending',
             'created_at': datetime.now(),
             'buyer_details': buyer_details
         })
-        notifications_collection.insert_one({
-            "user_id": produce['farmer_id'],
-            "message": f"New order placed for {quantity} kg of {produce['name']} by {buyer_details['name']}.",
-            "created_at": datetime.utcnow(),
-            "is_read": False
+
+        return jsonify({
+            "message": "Order placed successfully",
+            "produce_id": str(produce['_id']),
+            "status": "Pending"
+        }), 201'''
+
+@app.route('/api/buyer/produce/<produce_id>', methods=['GET', 'POST'])
+@jwt_required()
+def api_buyer_view_produce(produce_id):
+    produce = db.produce.find_one({'_id': ObjectId(produce_id), 'status': 'Available'})
+    if not produce:
+        return jsonify({"error": "Produce not found or unavailable"}), 404
+
+    farmer = db.users.find_one({'_id': produce['farmer_id']})
+
+    photo = ''
+    if produce.get('image_data'):
+        photo = f"data:{produce['image_type']};base64," + base64.b64encode(produce['image_data']).decode('utf-8')
+
+    produce_data = {
+        'id': str(produce['_id']),
+        'name': produce['name'],
+        'category': produce['category'],
+        'price': produce['price'],
+        'quantity': produce['quantity'],
+        'photo': photo,
+        'farmer_name': farmer['name'] if farmer else "Unknown"
+    }
+
+    # ✅ GET: return details
+    if request.method == 'GET':
+        return jsonify({"produce": produce_data}), 200
+
+    # ✅ POST: place order
+    if request.method == 'POST':
+        data = request.get_json()
+        user_id = get_jwt_identity()  # ✅ Correctly get buyer ID from token
+
+        try:
+            quantity = int(data.get('quantity', 0))
+            offer_price = float(data.get('offer_price', 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid input for quantity or price"}), 400
+
+        if quantity <= 0 or quantity > produce['quantity']:
+            return jsonify({"error": "Invalid quantity selected"}), 400
+
+        buyer_details = {
+            'name': data.get('buyer_name', ''),
+            'phone': data.get('buyer_phone', ''),
+            'address': data.get('buyer_address', '')
+        }
+
+        db.orders.insert_one({
+            'produce_id': produce['_id'],
+            'farmer_id': produce['farmer_id'],
+            'buyer_id': ObjectId(user_id),  # ✅ Fixed line
+            'quantity': quantity,
+            'offer_price': offer_price,
+            'status': 'Pending',
+            'created_at': datetime.now(),
+            'buyer_details': buyer_details
         })
+
         return jsonify({
             "message": "Order placed successfully",
             "produce_id": str(produce['_id']),
             "status": "Pending"
         }), 201
 
+'''
 @app.route("/api/buyer/orders", methods=["POST"])
 @jwt_required()
-def api_buyer_place_order():
+def buyer_place_order():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -983,7 +1479,7 @@ def api_buyer_place_order():
     if not all(k in data for k in required):
         return jsonify({"error": "Missing fields"}), 400
 
-    prod = produce_collection.find_one({"_id": ObjectId(data["produce_id"]), "status": "Available"})
+    prod = produce_coll.find_one({"_id": ObjectId(data["produce_id"]), "status": "Available"})
     if not prod:
         return jsonify({"error": "Invalid produce"}), 400
 
@@ -1005,20 +1501,64 @@ def api_buyer_place_order():
         "status": "Pending",
         "created_at": datetime.utcnow()
     }
-    res = orders_collection.insert_one(order)
-    notifications_collection.insert_one({
+    res = orders_coll.insert_one(order)
+    return jsonify({"message": "Order placed", "order_id": str(res.inserted_id)}), 201
+'''
+
+@app.route("/api/buyer/orders", methods=["POST"])
+@jwt_required()
+def buyer_place_order():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(force=True)
+    required = ["produce_id", "quantity", "offer_price"]
+    if not all(k in data for k in required):
+        return jsonify({"error": "Missing fields"}), 400
+
+    prod = produce_coll.find_one({"_id": ObjectId(data["produce_id"]), "status": "Available"})
+    if not prod:
+        return jsonify({"error": "Invalid produce"}), 400
+
+    try:
+        qty = int(data["quantity"])
+        offer = float(data["offer_price"])
+    except ValueError:
+        return jsonify({"error": "Invalid numeric values"}), 400
+
+    if qty <= 0 or qty > prod["quantity"]:
+        return jsonify({"error": "Invalid quantity"}), 400
+
+    # ✅ Insert new order
+    order = {
+        "produce_id": prod["_id"],
+        "farmer_id": prod["farmer_id"],
+        "buyer_id": ObjectId(user_id),
+        "quantity": qty,
+        "offer_price": offer,
+        "status": "Pending",
+        "created_at": datetime.utcnow()
+    }
+    res = orders_coll.insert_one(order)
+
+    # ✅ Notify farmer
+    db.notifications.insert_one({
         "user_id": prod["farmer_id"],
         "message": f"New order placed for {qty} kg of {prod['name']} by {user_obj['name']}.",
         "created_at": datetime.utcnow(),
         "is_read": False
     })
+
     return jsonify({"message": "Order placed", "order_id": str(res.inserted_id)}), 201
+
 
 @app.route("/api/buyer/orders", methods=["GET"])
 @jwt_required()
-def api_buyer_get_orders():
+def buyer_get_orders():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -1033,23 +1573,66 @@ def api_buyer_get_orders():
         {"$unwind": {"path": "$produce", "preserveNullAndEmptyArrays": True}},
         {"$sort": {"created_at": -1}}
     ]
-    results = list(orders_collection.aggregate(pipeline))
+    results = list(orders_coll.aggregate(pipeline))
     out = []
     for r in results:
         o = serialize_order(r)
         o["produce_name"] = r.get("produce", {}).get("name", "Unknown")
         out.append(o)
     return jsonify(out), 200
-
+'''
 @app.route("/api/buyer/notifications", methods=["GET"])
 @jwt_required()
-def api_buyer_notifications():
+def buyer_notifications():
     user_id = get_jwt_identity()
-    user_obj = users_collection.find_one({"_id": ObjectId(user_id)})
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
     if not user_obj or user_obj.get("user_type") != "buyer":
         return jsonify({"error": "Unauthorized"}), 403
 
-    notifs = notifications_collection.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
+    orders_cursor = orders_coll.find({"buyer_id": ObjectId(user_id)}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        prod = produce_coll.find_one({"_id": o["produce_id"]})
+        farmer = users_coll.find_one({"_id": o["farmer_id"]})
+        msg = f"Your order for {o['quantity']} kg of {prod['name']} from {farmer['name']} is {o['status']}"
+        notifications.append({"message": msg, "date": o["created_at"].isoformat()})
+    return jsonify(notifications), 200'''
+
+"""
+@app.route("/api/buyer/notifications", methods=["GET"])
+@jwt_required()
+def buyer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    orders_cursor = orders_coll.find({"buyer_id": ObjectId(user_id)}).sort("created_at", -1)
+    notifications = []
+    for o in orders_cursor:
+        prod = produce_coll.find_one({"_id": o.get("produce_id")})
+        farmer = users_coll.find_one({"_id": o.get("farmer_id")})
+
+        # ✅ Skip if missing any linked data
+        if not prod or not farmer:
+            continue
+
+        msg = f"Your order for {o.get('quantity', 0)} kg of {prod.get('name', 'Unknown')} from {farmer.get('name', 'Unknown')} is {o.get('status', 'Pending')}"
+        created_at = o.get("created_at")
+        date_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
+        notifications.append({"message": msg, "date": date_str})
+    return jsonify(notifications), 200
+"""
+
+@app.route("/api/buyer/notifications", methods=["GET"])
+@jwt_required()
+def buyer_notifications():
+    user_id = get_jwt_identity()
+    user_obj = users_coll.find_one({"_id": ObjectId(user_id)})
+    if not user_obj or user_obj.get("user_type") != "buyer":
+        return jsonify({"error": "Unauthorized"}), 403
+
+    notifs = db.notifications.find({"user_id": ObjectId(user_id)}).sort("created_at", -1)
     out = []
     for n in notifs:
         date_str = n["created_at"].isoformat() if isinstance(n["created_at"], datetime) else str(n["created_at"])
@@ -1060,10 +1643,13 @@ def api_buyer_notifications():
         })
     return jsonify(out), 200
 
+# ---------- Misc ----------
 @app.route("/api/ping", methods=["GET"])
 def ping():
     return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
 
 # ---------- Run ----------
-if __name__ == "_main_":
-    app.run(host="0.0.0.0", debug=True)
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0',debug=True)
